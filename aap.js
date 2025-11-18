@@ -1,10 +1,90 @@
 let currentBookData = null;
+let stream = null;
+let scanning = false;
 
 document.getElementById('searchBtn').addEventListener('click', searchBook);
 document.getElementById('isbnInput').addEventListener('keypress', (e) => {
     if (e.key === 'Enter') searchBook();
 });
 document.getElementById('copyBtn').addEventListener('click', copyToClipboard);
+document.getElementById('cameraBtn').addEventListener('click', startCamera);
+document.getElementById('closeCameraBtn').addEventListener('click', stopCamera);
+
+async function startCamera() {
+    try {
+        hideError();
+        hideResult();
+        
+        stream = await navigator.mediaDevices.getUserMedia({ 
+            video: { facingMode: 'environment' } 
+        });
+        
+        const video = document.getElementById('video');
+        video.srcObject = stream;
+        
+        document.getElementById('cameraBtn').classList.add('hidden');
+        document.getElementById('videoContainer').classList.remove('hidden');
+        
+        scanning = true;
+        scanBarcode();
+        
+    } catch (error) {
+        console.error('Camera error:', error);
+        showError('No se pudo acceder a la cámara. Verifica los permisos o usa la entrada manual.');
+    }
+}
+
+function stopCamera() {
+    scanning = false;
+    if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        stream = null;
+    }
+    document.getElementById('cameraBtn').classList.remove('hidden');
+    document.getElementById('videoContainer').classList.add('hidden');
+}
+
+async function scanBarcode() {
+    if (!scanning) return;
+    
+    const video = document.getElementById('video');
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    
+    if (canvas.width > 0 && canvas.height > 0) {
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+        
+        // Try to detect barcode using simple pattern detection
+        // Note: For production, you'd want to use a library like QuaggaJS or ZXing
+        const code = await detectBarcodeSimple(imageData);
+        
+        if (code) {
+            stopCamera();
+            document.getElementById('isbnInput').value = code;
+            await searchBook();
+            return;
+        }
+    }
+    
+    if (scanning) {
+        setTimeout(() => scanBarcode(), 500);
+    }
+}
+
+async function detectBarcodeSimple(imageData) {
+    // This is a simplified placeholder
+    // In production, integrate a proper barcode library like:
+    // - QuaggaJS: https://github.com/serratus/quaggaJS
+    // - ZXing: https://github.com/zxing-js/library
+    
+    // For now, return null (manual entry required)
+    // To add real scanning, include one of these libraries
+    return null;
+}
 
 async function searchBook() {
     const isbn = document.getElementById('isbnInput').value.trim();
@@ -99,8 +179,10 @@ function copyToClipboard() {
     
     const btn = document.getElementById('copyBtn');
     const span = btn.querySelector('span');
+    btn.classList.add('copied');
     span.textContent = '¡Copiado!';
     setTimeout(() => {
+        btn.classList.remove('copied');
         span.textContent = 'Copiar Cita';
     }, 2000);
 }
