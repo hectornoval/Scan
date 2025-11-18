@@ -1,0 +1,277 @@
+import React, { useState, useRef } from 'react';
+import { Camera, Copy, Book, AlertCircle, CheckCircle, Loader2 } from 'lucide-react';
+
+export default function ScanToBibliography() {
+  const [scanning, setScanning] = useState(false);
+  const [bookData, setBookData] = useState(null);
+  const [error, setError] = useState('');
+  const [copied, setCopied] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [manualISBN, setManualISBN] = useState('');
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
+
+  const startCamera = async () => {
+    try {
+      setError('');
+      setBookData(null);
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: 'environment' } 
+      });
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        streamRef.current = stream;
+      }
+      setScanning(true);
+    } catch (err) {
+      setError('No se pudo acceder a la cámara. Por favor, permite el acceso o ingresa el ISBN manualmente.');
+    }
+  };
+
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    setScanning(false);
+  };
+
+  const fetchBookData = async (isbn) => {
+    try {
+      setError('');
+      setBookData(null);
+      setLoading(true);
+      
+      const cleanISBN = isbn.replace(/[-\s]/g, '');
+      
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 1000,
+          messages: [
+            { 
+              role: "user", 
+              content: `Search the web for book information for ISBN: ${cleanISBN}. Return ONLY a JSON object with this exact structure (no markdown, no preamble):
+{
+  "authors": ["Author Name"],
+  "year": "2024",
+  "title": "Book Title",
+  "subtitle": "Subtitle if any or empty string",
+  "publisher": "Publisher Name",
+  "city": "City of publication or s.l. if unknown"
+}
+
+If the book is not found, return:
+{
+  "error": "Book not found"
+}`
+            }
+          ],
+          tools: [
+            {
+              "type": "web_search_20250305",
+              "name": "web_search"
+            }
+          ]
+        })
+      });
+
+      const data = await response.json();
+      console.log('API Response:', data);
+      
+      if (!response.ok) {
+        throw new Error(`API Error: ${data.error?.message || 'Unknown error'}`);
+      }
+      
+      if (!data.content || !Array.isArray(data.content)) {
+        throw new Error('Invalid API response structure');
+      }
+      
+      let fullResponse = data.content
+        .map(item => (item.type === "text" ? item.text : ""))
+        .filter(Boolean)
+        .join("\n");
+      
+      console.log('Full response:', fullResponse);
+      
+      // Clean up the response
+      fullResponse = fullResponse.replace(/```json|```/g, "").trim();
+      
+      const bookInfo = JSON.parse(fullResponse);
+      
+      if (bookInfo.error) {
+        setError(`No se encontró información para el ISBN: ${cleanISBN}. Verifica que el número sea correcto.`);
+      } else {
+        setBookData(bookInfo);
+        stopCamera();
+      }
+      
+    } catch (err) {
+      console.error('Error completo:', err);
+      setError(`Error al procesar la búsqueda: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleManualSearch = () => {
+    if (manualISBN.trim()) {
+      fetchBookData(manualISBN.trim());
+    }
+  };
+
+  const formatCitation = () => {
+    if (!bookData) return '';
+    
+    const authors = bookData.authors.map(author => {
+      const parts = author.split(' ');
+      if (parts.length > 1) {
+        const lastName = parts[parts.length - 1];
+        const firstNames = parts.slice(0, -1).join(' ');
+        return `${lastName.toUpperCase()}, ${firstNames}`;
+      }
+      return author.toUpperCase();
+    }).join('; ');
+
+    const fullTitle = bookData.subtitle 
+      ? `${bookData.title}: ${bookData.subtitle}`
+      : bookData.title;
+
+    return `${authors}. (${bookData.year}). *${fullTitle}*. ${bookData.city}: ${bookData.publisher}.`;
+  };
+
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(formatCitation());
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+      <div className="max-w-2xl mx-auto">
+        <div className="bg-white rounded-lg shadow-xl p-6 mb-6">
+          <div className="flex items-center gap-3 mb-6">
+            <Book className="w-8 h-8 text-indigo-600" />
+            <h1 className="text-3xl font-bold text-gray-800">Scan to Bibliography</h1>
+          </div>
+          
+          <p className="text-gray-600 mb-6">
+            Escanea el código de barras de un libro o ingresa su ISBN para generar la cita bibliográfica en formato latinoamericano.
+          </p>
+
+          {/* Manual ISBN Input */}
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Ingresar ISBN manualmente
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={manualISBN}
+                onChange={(e) => setManualISBN(e.target.value)}
+                placeholder="Ej: 9780307474278"
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                onKeyPress={(e) => e.key === 'Enter' && !loading && handleManualSearch()}
+                disabled={loading}
+              />
+              <button
+                onClick={handleManualSearch}
+                disabled={loading}
+                className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Buscando...
+                  </>
+                ) : (
+                  'Buscar'
+                )}
+              </button>
+            </div>
+          </div>
+
+          <div className="text-center mb-4 text-gray-500">o</div>
+
+          {/* Camera Section */}
+          {!scanning ? (
+            <button
+              onClick={startCamera}
+              disabled={loading}
+              className="w-full py-4 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2 font-medium text-lg disabled:bg-gray-400 disabled:cursor-not-allowed"
+            >
+              <Camera className="w-6 h-6" />
+              Activar Cámara para Escanear
+            </button>
+          ) : (
+            <div className="space-y-4">
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                className="w-full rounded-lg border-4 border-indigo-600"
+              />
+              <div className="text-sm text-gray-600 text-center">
+                Nota: La detección automática de códigos de barras requiere una librería adicional. Por ahora, usa la opción de ingreso manual del ISBN.
+              </div>
+              <button
+                onClick={stopCamera}
+                className="w-full py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium"
+              >
+                Cerrar Cámara
+              </button>
+            </div>
+          )}
+
+          {/* Error Message */}
+          {error && (
+            <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
+              <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+              <p className="text-red-800 text-sm">{error}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Citation Result */}
+        {bookData && (
+          <div className="bg-white rounded-lg shadow-xl p-6">
+            <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+              <CheckCircle className="w-6 h-6 text-green-600" />
+              Cita Bibliográfica
+            </h2>
+            
+            <div className="bg-gray-50 p-4 rounded-lg mb-4 border-l-4 border-indigo-600">
+              <p className="text-gray-800 leading-relaxed">
+                {formatCitation()}
+              </p>
+            </div>
+
+            <button
+              onClick={copyToClipboard}
+              className="w-full py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2 font-medium"
+            >
+              <Copy className="w-5 h-5" />
+              {copied ? '¡Copiado!' : 'Copiar Cita'}
+            </button>
+
+            <div className="mt-4 pt-4 border-t border-gray-200">
+              <h3 className="text-sm font-semibold text-gray-700 mb-2">Detalles del libro:</h3>
+              <div className="text-sm text-gray-600 space-y-1">
+                <p><span className="font-medium">Autor(es):</span> {bookData.authors.join(', ')}</p>
+                <p><span className="font-medium">Título:</span> {bookData.title}</p>
+                {bookData.subtitle && <p><span className="font-medium">Subtítulo:</span> {bookData.subtitle}</p>}
+                <p><span className="font-medium">Editorial:</span> {bookData.publisher}</p>
+                <p><span className="font-medium">Año:</span> {bookData.year}</p>
+                <p><span className="font-medium">Ciudad:</span> {bookData.city}</p>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
