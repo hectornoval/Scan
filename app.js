@@ -1,15 +1,173 @@
 let currentBookData = null;
 let html5QrCode = null;
+let bookHistory = [];
+
+// Load history from localStorage on page load
+document.addEventListener('DOMContentLoaded', () => {
+    loadHistory();
+});
 
 document.getElementById('searchBtn').addEventListener('click', searchBook);
 document.getElementById('isbnInput').addEventListener('keypress', (e) => {
     if (e.key === 'Enter') searchBook();
 });
 document.getElementById('copyBtn').addEventListener('click', copyToClipboard);
+document.getElementById('saveToHistoryBtn').addEventListener('click', saveToHistory);
+document.getElementById('clearHistoryBtn').addEventListener('click', clearHistory);
 document.getElementById('cameraBtn').addEventListener('click', startCamera);
 document.getElementById('closeCameraBtn').addEventListener('click', stopCamera);
 document.getElementById('manualEntryBtn').addEventListener('click', stopCamera);
 
+// History Management Functions
+function loadHistory() {
+    const saved = localStorage.getItem('bookHistory');
+    if (saved) {
+        bookHistory = JSON.parse(saved);
+        updateHistoryDisplay();
+    }
+}
+
+function saveHistory() {
+    localStorage.setItem('bookHistory', JSON.stringify(bookHistory));
+    updateHistoryDisplay();
+}
+
+function saveToHistory() {
+    if (!currentBookData) return;
+    
+    const entry = {
+        ...currentBookData,
+        isbn: document.getElementById('isbnInput').value.trim(),
+        timestamp: new Date().toISOString(),
+        citation: formatCitation().replace(/<em>/g, '').replace(/<\/em>/g, '')
+    };
+    
+    // Check if book already exists in history (by ISBN)
+    const existingIndex = bookHistory.findIndex(item => item.isbn === entry.isbn);
+    
+    if (existingIndex !== -1) {
+        // Update existing entry
+        bookHistory[existingIndex] = entry;
+        showNotification('Libro actualizado en el historial', 'success');
+    } else {
+        // Add new entry at the beginning
+        bookHistory.unshift(entry);
+        showNotification('Libro guardado en el historial', 'success');
+    }
+    
+    saveHistory();
+}
+
+function clearHistory() {
+    if (confirm('¿Estás seguro de que quieres eliminar todo el historial?')) {
+        bookHistory = [];
+        localStorage.removeItem('bookHistory');
+        updateHistoryDisplay();
+        showNotification('Historial eliminado', 'info');
+    }
+}
+
+function deleteHistoryItem(isbn) {
+    bookHistory = bookHistory.filter(item => item.isbn !== isbn);
+    saveHistory();
+    showNotification('Libro eliminado del historial', 'info');
+}
+
+function loadFromHistory(isbn) {
+    const book = bookHistory.find(item => item.isbn === isbn);
+    if (book) {
+        currentBookData = book;
+        document.getElementById('isbnInput').value = book.isbn;
+        displayResult();
+        window.scrollTo({ top: document.getElementById('result').offsetTop - 20, behavior: 'smooth' });
+    }
+}
+
+function updateHistoryDisplay() {
+    const historySection = document.getElementById('historySection');
+    const historyList = document.getElementById('historyList');
+    const historyCount = document.getElementById('historyCount');
+    
+    historyCount.textContent = bookHistory.length;
+    
+    if (bookHistory.length === 0) {
+        historySection.classList.add('hidden');
+        return;
+    }
+    
+    historySection.classList.remove('hidden');
+    
+    historyList.innerHTML = bookHistory.map(book => `
+        <div class="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors">
+            <div class="flex justify-between items-start gap-4">
+                <div class="flex-1 cursor-pointer" onclick="loadFromHistory('${book.isbn}')">
+                    <h3 class="font-semibold text-gray-900 mb-1">${book.title}</h3>
+                    <p class="text-sm text-gray-600 mb-2">${book.authors.join(', ')} (${book.year})</p>
+                    <p class="text-xs text-gray-500">ISBN: ${book.isbn}</p>
+                    <p class="text-xs text-gray-400 mt-1">Guardado: ${formatDate(book.timestamp)}</p>
+                </div>
+                <div class="flex gap-2">
+                    <button
+                        onclick="copyHistoryCitation('${book.isbn}')"
+                        class="p-2 bg-indigo-100 text-indigo-600 rounded hover:bg-indigo-200 transition-colors"
+                        title="Copiar cita"
+                    >
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                        </svg>
+                    </button>
+                    <button
+                        onclick="deleteHistoryItem('${book.isbn}')"
+                        class="p-2 bg-red-100 text-red-600 rounded hover:bg-red-200 transition-colors"
+                        title="Eliminar"
+                    >
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+function copyHistoryCitation(isbn) {
+    const book = bookHistory.find(item => item.isbn === isbn);
+    if (book && book.citation) {
+        navigator.clipboard.writeText(book.citation);
+        showNotification('Cita copiada al portapapeles', 'success');
+    }
+}
+
+function formatDate(isoString) {
+    const date = new Date(isoString);
+    return date.toLocaleDateString('es-ES', { 
+        year: 'numeric', 
+        month: 'short', 
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
+function showNotification(message, type = 'info') {
+    const colors = {
+        success: 'bg-green-500',
+        error: 'bg-red-500',
+        info: 'bg-blue-500'
+    };
+    
+    const notification = document.createElement('div');
+    notification.className = `fixed top-4 left-1/2 transform -translate-x-1/2 ${colors[type]} text-white px-6 py-3 rounded-lg shadow-lg z-50`;
+    notification.textContent = message;
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+        notification.remove();
+    }, 2000);
+}
+
+// Camera Functions
 async function startCamera() {
     try {
         hideError();
@@ -81,20 +239,11 @@ function onScanSuccess(decodedText, decodedResult) {
     
     // Check if it looks like a valid ISBN (10 or 13 digits)
     if (cleanCode.length >= 10 && cleanCode.length <= 13) {
-        // Show success feedback
-        const statusDiv = document.createElement('div');
-        statusDiv.className = 'fixed top-4 left-1/2 transform -translate-x-1/2 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-bounce';
-        statusDiv.textContent = '¡ISBN detectado! ' + cleanCode;
-        document.body.appendChild(statusDiv);
-        
-        setTimeout(() => {
-            statusDiv.remove();
-        }, 2000);
+        showNotification('¡ISBN detectado! ' + cleanCode, 'success');
         
         stopCamera();
         document.getElementById('isbnInput').value = cleanCode;
         
-        // Small delay before searching to show the success message
         setTimeout(() => {
             searchBook();
         }, 500);
@@ -105,10 +254,9 @@ function onScanSuccess(decodedText, decodedResult) {
 
 function onScanError(errorMessage) {
     // Scanning errors are normal when no barcode is in view
-    // Only log to console, don't show to user
-    // console.log('Scan error:', errorMessage);
 }
 
+// Search and Display Functions
 async function searchBook() {
     const isbn = document.getElementById('isbnInput').value.trim();
     if (!isbn) return;
@@ -151,12 +299,7 @@ async function searchBook() {
 }
 
 function extractCity(book) {
-    // Try to extract city from various fields
-    if (book.publisher && book.publisher.includes(':')) {
-        const parts = book.publisher.split(':');
-        return parts[0].trim();
-    }
-    return 's.l.'; // sin lugar
+    return 's.l.';
 }
 
 function formatCitation() {
