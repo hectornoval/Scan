@@ -6,7 +6,6 @@
     <title>Scan to Bibliography</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body class="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen">
@@ -97,6 +96,28 @@
 
                 <div id="error" class="hidden mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
                     <p class="text-red-800 text-sm"></p>
+                </div>
+            </div>
+
+            <!-- History Section -->
+            <div id="historySection" class="hidden bg-white rounded-lg shadow-xl p-6 mb-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-xl font-bold text-gray-800 flex items-center gap-2">
+                        <svg class="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                        Historial (<span id="historyCount">0</span>)
+                    </h2>
+                    <button
+                        id="clearHistoryBtn"
+                        class="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-sm font-medium"
+                    >
+                        Limpiar historial
+                    </button>
+                </div>
+                
+                <div id="historyList" class="space-y-3 max-h-96 overflow-y-auto">
+                    <!-- History items will be inserted here -->
                 </div>
             </div>
 
