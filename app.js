@@ -212,6 +212,21 @@ async function startCamera() {
     }
 }
 
+async function detectBarcodeSimple(imageData) {
+    return new Promise((resolve) => {
+        Quagga.decodeSingle({
+            decoder: { readers: ["ean_reader"] },
+            locate: true,
+            src: imageData
+        }, function(result) {
+            if (result && result.codeResult) {
+                resolve(result.codeResult.code);
+            } else {
+                resolve(null);
+            }
+        });
+    });
+}
 async function stopCamera() {
     if (html5QrCode) {
         try {
