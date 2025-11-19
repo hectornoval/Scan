@@ -52,4 +52,4 @@ async function detectBarcodeSimple(imageData) {
 
 ## Demo
 
-Visita: [tu-usuario.github.io/scan-to-bibliography](https://tu-usuario.github.io/scan-to-bibliography)
+https://hectornoval.github.io/biblio/
